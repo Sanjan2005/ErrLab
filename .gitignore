@@ -1,0 +1,14 @@
+# secrets
+.env
+*.env
+# simulation output
+results/raw/
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
