@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 2 (Build the CLI)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running: flag created with keyed variants, metric registered, draft experiment configured, server-side key minted to `.env`, Python SDK verified).
-- **Blocked:** None. Ready to build CLI modules.
+- **Current phase:** Phase 3 (Pipeline smoke test — Day 1 gate)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI: errlab package with core, cli, flags, messages, identity, and test suite).
+- **Blocked:** None. Ready for Phase 3 end-to-end smoke test.
 
 ---
 
@@ -16,6 +16,8 @@
 | 2026-11-27 | Standard `pyproject.toml` with `setuptools.build_meta` | Modern packaging for Python CLI with editable install support (`pip install -e .`) |
 | 2026-11-27 | Install Flagsmith CLI v2 binary via official PowerShell script | `flagsmith-cli` is not a pip distribution; official v2 binary installed to `~/.local/bin/flagsmith.exe` |
 | 2026-11-27 | Use verified SDK 6.7.0 signatures: `flush_events()`, `get_experiment_flag()`, `track_event(event=...)` | Live inspection of installed SDK confirmed method names (`event_processor` is private `_event_processor`; public flush is `flush_events()`) |
+| 2026-11-27 | Isolate Flagsmith SDK strictly to `errlab/flags.py` | Enforces project rule: only one module imports `flagsmith`, making testing and debugging transparent |
+| 2026-11-27 | Persistent anonymous identity in `~/.errlab/identity` with `ERRLAB_HOME` override | Provides stable identity across runs while allowing clean temporary directory mocking in tests |
 
 ---
 
@@ -103,5 +105,36 @@ Phase 0 completed successfully. Developer tooling (Python 3.14, Git, Docker, Doc
 #### Phase 1 Summary
 Phase 1 completed successfully. Project `ErrLab` was linked, and the multivariate feature `error_message_style` was created with `terse` (control), `with_fix`, and `with_fix_and_link`. Metric `retry_succeeded` and draft experiment `CLI Error Message Style Experiment` were registered. A server-side environment key was generated and stored in `.env`. Python SDK dependencies and method signatures (`flush_events`, `get_experiment_flag`, `track_event`) were verified against the live environment.
 **Commit hash:** `3c23162`
+
+### [Phase 2] Build the CLI and test suite: 2026-11-27 12:21 IST
+- **Goal:** Implement the ErrLab CLI application (`errlab deploy`, `errlab retry`, `errlab identity`), isolate Flagsmith SDK interactions, and build unit tests.
+- **What I did:**
+  - Created `errlab/__init__.py` with package version.
+  - Created `errlab/messages.py` defining static 3-variant × 3-scenario message matrix (`terse`, `with_fix`, `with_fix_and_link` across `invalid_config`, `missing_api_key`, `port_in_use`).
+  - Created `errlab/identity.py` for persistent anonymous user identity generation (`~/.errlab/identity` with `ERRLAB_HOME` override).
+  - Created `errlab/flags.py` as the exclusive module importing Flagsmith SDK, providing `init()`, `get_variant()`, `record_conversion()`, and `flush()`.
+  - Created `errlab/core.py` providing `attempt_deploy(user_id, scenario)` (evaluates flag, records exposure, persists pending state) and `attempt_retry(user_id)` (records `retry_succeeded` conversion, flushes events, clears state).
+  - Created `errlab/cli.py` entry point supporting `deploy`, `retry`, and `identity` subcommands.
+  - Created unit tests: `tests/test_messages.py` (structure and lengths), `tests/test_identity.py` (persistence and reset), and `tests/test_core.py` (deploy-retry lifecycle with mocks).
+  - Executed test suite with `python -m pytest tests -v`.
+  - Executed live CLI runs testing `identity`, `deploy`, and `retry` commands against live Flagsmith remote evaluation.
+- **Result:**
+  - All 8 unit tests passed cleanly.
+  - Live CLI correctly fetched flags, rendered variant messages (`with_fix` and `terse` observed across different identities), and completed retry conversion and state cleanup.
+- **Docs consulted:** Flagsmith documentation on remote evaluation, identity evaluation, and event tracking.
+- **Decisions and why:**
+  - `attempt_deploy` and `attempt_retry` live in `core.py` so the simulation harness (Phase 4) and CLI use identical code paths.
+  - State file tracks pending error state for `errlab retry` so the retry action is directly connected to the preceding error exposure.
+- **Verification:**
+  - `python -m pytest tests -v` output: `8 passed in 0.33s`.
+  - Live CLI invocation output:
+    - `python -m errlab.cli deploy --scenario missing_api_key` printed assigned variant message.
+    - `python -m errlab.cli retry` printed `Deployment succeeded! Successfully resolved 'missing_api_key'.` and cleared state.
+    - Subsequent `python -m errlab.cli retry` exited with `No failed deployment to retry. Run 'errlab deploy' first.`
+- **Open issues / next step:** Begin Phase 3: Pipeline smoke test (Day 1 gate).
+
+#### Phase 2 Summary
+Phase 2 completed successfully. The complete `errlab` package was built with strict architectural boundaries: `flags.py` exclusively manages the Flagsmith SDK; `messages.py` contains static templates; `identity.py` manages persistent anonymous identities; `core.py` provides the deploy/retry logic used by both CLI and simulation; and `cli.py` exposes the user command interface. 8 unit tests passed, and live CLI executions verified end-to-end variant rendering and conversion flow.
+
 
 
