@@ -1,0 +1,19 @@
+# ErrLab Simulation Ground-Truth Model
+# Pre-registered design parameters for Flagsmith Toggle Wars Track 01
+
+experiment_name: "CLI Error Message Style Experiment"
+metric: "retry_succeeded"
+seed: 20261127
+planned_sample_size: 9000
+stopping_rule: "Fixed-horizon evaluation. Run all planned bots, then analyze results once. No early stopping."
+
+# Ground-truth recovery rates on first retry following error exposure:
+ground_truth_rates:
+  terse: 0.35              # Control: 35% recover on first retry
+  with_fix: 0.48           # +13pp: actionable instruction helps diagnosis
+  with_fix_and_link: 0.50  # +15pp vs control, +2pp vs with_fix: docs link adds slight marginal lift
+
+scenarios:
+  - invalid_config
+  - missing_api_key
+  - port_in_use

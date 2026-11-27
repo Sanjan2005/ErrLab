@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 4 (Simulation harness)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed: 20 identities tested, exposures and conversions ingested and verified in Flagsmith warehouse).
-- **Blocked:** None. Ready to build Phase 4 simulation harness.
+- **Current phase:** Phase 5 / Phase 6 (A/A check or Full Experiment Run)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness: model.yaml, simulate/run.py, test suite, and 300-bot pilot verified with 100% warehouse data match).
+- **Blocked:** None. Ready for experiment execution.
 
 ---
 
@@ -20,6 +20,7 @@
 | 2026-11-27 | Persistent anonymous identity in `~/.errlab/identity` with `ERRLAB_HOME` override | Provides stable identity across runs while allowing clean temporary directory mocking in tests |
 | 2026-11-27 | Transition experiment to running via `POST .../experiments/970/start/` | Activates experiment traffic allocation and metric ingestion |
 | 2026-11-27 | Use `POST .../experiments/970/results/refresh/` for immediate warehouse computation | Eliminates delay waiting for automatic background query execution |
+| 2026-11-27 | Periodic event buffer flush (`batch_flush=100`) and paced request delay (20ms) | Achieves ~8 bots/second throughput with zero event drops, memory pressure, or API rate limits |
 
 ---
 
@@ -168,6 +169,39 @@ Phase 2 completed successfully. The complete `errlab` package was built with str
 #### Phase 3 Summary
 Phase 3 completed successfully, clearing the critical Day 1 gate. The Flagsmith experiment was transitioned to `running`. The smoke test script (`scripts/smoke_test.py`) generated 20 unique identities through the full SDK evaluation and conversion tracking pipeline. All events landed in Flagsmith's cloud ingestion pipeline (HTTP 202) and were verified directly via the experiment results API, confirming accurate exposure and conversion aggregation across all three variants.
 **Commit hash:** `feaa0ca`
+
+### [Phase 4] Simulation harness and pilot run: 2026-11-27 14:56 IST
+- **Goal:** Build the reproducible, seeded simulation harness (`simulate/run.py` and `simulate/model.yaml`), implement unit tests, and verify performance and event pipeline integrity via a 300-bot pilot run.
+- **What I did:**
+  - Created [`simulate/model.yaml`](file:///c:/Users/Surya/Documents/projects/ErrLab/simulate/model.yaml) recording pre-registered experiment parameters: seed `20261127`, fixed-horizon sample size `9000`, and ground-truth recovery rates (`terse: 0.35`, `with_fix: 0.48`, `with_fix_and_link: 0.50`).
+  - Created [`simulate/run.py`](file:///c:/Users/Surya/Documents/projects/ErrLab/simulate/run.py) supporting `--n`, `--seed`, `--dry-run`, `--delay`, and `--batch-flush`.
+  - Created [`tests/test_simulate.py`](file:///c:/Users/Surya/Documents/projects/ErrLab/tests/test_simulate.py) validating model YAML structure and dry-run execution with zero network calls.
+  - Executed test suite (`python -m pytest tests -v`) — all 10 unit tests passed.
+  - Executed live pilot simulation: `python simulate/run.py --n 300 --seed 20261127`.
+  - Triggered warehouse calculation refresh (`POST .../experiments/970/results/refresh/`) and queried `GET .../experiments/970/results/`.
+  - Cross-checked local CSV output (`results/raw/simulation_20261127_145439.csv`) against Flagsmith Cloud warehouse counts.
+- **Result:**
+  - Pilot simulation completed 300 bots in 41.3s (~7.3 bots/sec) with zero errors.
+  - Local CSV counts:
+    - `terse`: 95 exposures, 41 conversions (43.2%)
+    - `with_fix`: 97 exposures, 55 conversions (56.7%)
+    - `with_fix_and_link`: 108 exposures, 56 conversions (51.9%)
+    - Total: 300 exposures, 152 conversions.
+  - Flagsmith warehouse results for the 09:00:00 bucket matched the CSV with 100% precision:
+    - New identities: `control: 95`, `with_fix: 97`, `with_fix_and_link: 108` (300 total).
+    - Converted identities: `control: 41`, `with_fix: 55`, `with_fix_and_link: 56` (152 total).
+  - Bayesian inference engine computed live statistics: `with_fix` lift `+26.9%` (93.1% win probability), `with_fix_and_link` lift `+18.1%` (85.9% win probability).
+- **Docs consulted:** Flagsmith Experimentation Bayesian inference engine documentation.
+- **Decisions and why:**
+  - Paced requests with 20ms delay and batched flushes every 100 iterations to ensure clean streaming through the event processor without hitting edge rate limits.
+  - Saved raw CSVs to `results/raw/` (gitignored) for exact mathematical reconciliation.
+- **Verification:**
+  - Flagsmith API results payload `conversions_timeseries` and `exposures_timeseries` exactly matched CSV counts for all three variants.
+- **Open issues / next step:** Proceed to Phase 5 (A/A test) or Phase 6 (The real 9,000-bot experiment).
+
+#### Phase 4 Summary
+Phase 4 completed successfully. The simulation harness (`simulate/run.py`) and model specification (`simulate/model.yaml`) were constructed and tested. A live 300-bot pilot executed at ~7.3 bots/sec, logging every interaction to CSV. Cross-checking against Flagsmith's API confirmed a 100% exact match between local logs and the warehouse ingestion database across all three variants, with live Bayesian lift and credible intervals rendered.
+
 
 
 
