@@ -201,6 +201,7 @@ Phase 3 completed successfully, clearing the critical Day 1 gate. The Flagsmith 
 
 #### Phase 4 Summary
 Phase 4 completed successfully. The simulation harness (`simulate/run.py`) and model specification (`simulate/model.yaml`) were constructed and tested. A live 300-bot pilot executed at ~7.3 bots/sec, logging every interaction to CSV. Cross-checking against Flagsmith's API confirmed a 100% exact match between local logs and the warehouse ingestion database across all three variants, with live Bayesian lift and credible intervals rendered.
+**Commit hash:** `51d3060`
 
 
 
