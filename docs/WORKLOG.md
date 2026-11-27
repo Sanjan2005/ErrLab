@@ -102,5 +102,6 @@ Phase 0 completed successfully. Developer tooling (Python 3.14, Git, Docker, Doc
 
 #### Phase 1 Summary
 Phase 1 completed successfully. Project `ErrLab` was linked, and the multivariate feature `error_message_style` was created with `terse` (control), `with_fix`, and `with_fix_and_link`. Metric `retry_succeeded` and draft experiment `CLI Error Message Style Experiment` were registered. A server-side environment key was generated and stored in `.env`. Python SDK dependencies and method signatures (`flush_events`, `get_experiment_flag`, `track_event`) were verified against the live environment.
+**Commit hash:** `3c23162`
 
 
