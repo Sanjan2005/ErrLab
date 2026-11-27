@@ -10,3 +10,9 @@ Rules:
 - Never commit or print API keys. Use .env (gitignored).
 - Work in small steps; verify each; keep code readable. I must be able to explain every line.
 - Every user (including simulated bots) needs a stable identifier.
+
+## Documentation rule
+- Log all work in docs/WORKLOG.md (append-only, newest at the bottom) using the entry format: Goal, What I did, Result, Docs consulted, Decisions and why, Verification, Open issues.
+- Keep Current status, Decisions log, and Problems and fixes at the top up to date.
+- Never log secrets or credential file contents; write [REDACTED].
+- Commit the worklog with the work it describes.
