@@ -167,6 +167,7 @@ Phase 2 completed successfully. The complete `errlab` package was built with str
 
 #### Phase 3 Summary
 Phase 3 completed successfully, clearing the critical Day 1 gate. The Flagsmith experiment was transitioned to `running`. The smoke test script (`scripts/smoke_test.py`) generated 20 unique identities through the full SDK evaluation and conversion tracking pipeline. All events landed in Flagsmith's cloud ingestion pipeline (HTTP 202) and were verified directly via the experiment results API, confirming accurate exposure and conversion aggregation across all three variants.
+**Commit hash:** `feaa0ca`
 
 
 
