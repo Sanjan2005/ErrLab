@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 3 (Pipeline smoke test — Day 1 gate)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI: errlab package with core, cli, flags, messages, identity, and test suite).
-- **Blocked:** None. Ready for Phase 3 end-to-end smoke test.
+- **Current phase:** Phase 4 (Simulation harness)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed: 20 identities tested, exposures and conversions ingested and verified in Flagsmith warehouse).
+- **Blocked:** None. Ready to build Phase 4 simulation harness.
 
 ---
 
@@ -18,6 +18,8 @@
 | 2026-11-27 | Use verified SDK 6.7.0 signatures: `flush_events()`, `get_experiment_flag()`, `track_event(event=...)` | Live inspection of installed SDK confirmed method names (`event_processor` is private `_event_processor`; public flush is `flush_events()`) |
 | 2026-11-27 | Isolate Flagsmith SDK strictly to `errlab/flags.py` | Enforces project rule: only one module imports `flagsmith`, making testing and debugging transparent |
 | 2026-11-27 | Persistent anonymous identity in `~/.errlab/identity` with `ERRLAB_HOME` override | Provides stable identity across runs while allowing clean temporary directory mocking in tests |
+| 2026-11-27 | Transition experiment to running via `POST .../experiments/970/start/` | Activates experiment traffic allocation and metric ingestion |
+| 2026-11-27 | Use `POST .../experiments/970/results/refresh/` for immediate warehouse computation | Eliminates delay waiting for automatic background query execution |
 
 ---
 
@@ -28,6 +30,7 @@
 | 2026-11-27 | `ERROR: Could not find a version that satisfies the requirement flagsmith-cli` | `flagsmith-cli` is not a Python package on PyPI (the Python package is `flagsmith` SDK) | Installed official Flagsmith CLI v2 using `irm https://raw.githubusercontent.com/Flagsmith/flagsmith-cli/main/install.ps1 \| iex` |
 | 2026-11-27 | `ModuleNotFoundError: No module named 'dotenv'` | Python virtual/global environment lacked optional dependencies from `pyproject.toml` | Installed package in editable mode with extras: `pip install -e ".[dev]"` |
 | 2026-11-27 | `Error: environment key "Development" not found in project 56669` | `flagsmith init -e` expects the client-side API key, not the display name | Passed environment key `MQSxjKYRor9tQ2DccDBjUA` |
+| 2026-11-27 | `ModuleNotFoundError: No module named 'errlab'` in `scripts/smoke_test.py` | Script executed directly with script directory as first `sys.path` entry | Added project root directory to `sys.path` via `Path(__file__).resolve().parent.parent` |
 
 ---
 
@@ -136,6 +139,35 @@ Phase 1 completed successfully. Project `ErrLab` was linked, and the multivariat
 #### Phase 2 Summary
 Phase 2 completed successfully. The complete `errlab` package was built with strict architectural boundaries: `flags.py` exclusively manages the Flagsmith SDK; `messages.py` contains static templates; `identity.py` manages persistent anonymous identities; `core.py` provides the deploy/retry logic used by both CLI and simulation; and `cli.py` exposes the user command interface. 8 unit tests passed, and live CLI executions verified end-to-end variant rendering and conversion flow.
 **Commit hash:** `0bdd7ff`
+
+### [Phase 3] Pipeline smoke test (Day 1 gate): 2026-11-27 13:45 IST
+- **Goal:** Launch the experiment in Flagsmith, execute a multi-identity smoke test through real SDK calls, flush events, and verify that exposures and conversions are accurately recorded in the Flagsmith warehouse.
+- **What I did:**
+  - Transitioned experiment 970 (`CLI Error Message Style Experiment`) from `created` to `running` using `POST .../experiments/970/start/`.
+  - Created [`scripts/smoke_test.py`](file:///c:/Users/Surya/Documents/projects/ErrLab/scripts/smoke_test.py) executing 20 unique identities (`smoke-user-000` to `smoke-user-019`) cycling through all three error scenarios (`invalid_config`, `missing_api_key`, `port_in_use`).
+  - Recorded exposure on each `attempt_deploy()` call and simulated ~50% retry conversion rate (10 conversions total).
+  - Flushed events using `flags.flush()` (HTTP 202 response from `https://events.api.flagsmith.com/v1/events`).
+  - Triggered results computation using `POST .../experiments/970/results/refresh/`.
+  - Queried `GET .../experiments/970/results/` to verify warehouse numbers against local counts.
+- **Result:**
+  - Smoke test executed cleanly with 20 identities.
+  - Warehouse results matched test distribution:
+    - `control`: 7 exposures, 4 conversions.
+    - `with_fix`: 3 exposures, 1 conversion.
+    - `with_fix_and_link`: 11 exposures, 6 conversions (including 1 pre-test debug identity).
+  - Total: 21 exposures, 11 conversions captured and indexed in Flagsmith's warehouse.
+- **Docs consulted:** Flagsmith Experimentation results and refresh API documentation.
+- **Decisions and why:**
+  - Run smoke test with distinct `smoke-user-*` prefixes to isolate from prior ad-hoc CLI runs.
+  - Call the explicit results refresh endpoint to verify the backend pipeline immediately.
+- **Verification:**
+  - `GET api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/970/results/` returned exact variant counts and timeseries points:
+    `"metrics": [{"variants": {"control": {"n": 7, "sum": 4.0}, "with_fix": {"n": 3, "sum": 1.0}, "with_fix_and_link": {"n": 11, "sum": 6.0}}}]`.
+- **Open issues / next step:** Day 1 Gate PASSED. Proceed to Phase 4 (Simulation harness).
+
+#### Phase 3 Summary
+Phase 3 completed successfully, clearing the critical Day 1 gate. The Flagsmith experiment was transitioned to `running`. The smoke test script (`scripts/smoke_test.py`) generated 20 unique identities through the full SDK evaluation and conversion tracking pipeline. All events landed in Flagsmith's cloud ingestion pipeline (HTTP 202) and were verified directly via the experiment results API, confirming accurate exposure and conversion aggregation across all three variants.
+
 
 
 
