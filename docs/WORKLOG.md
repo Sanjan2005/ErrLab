@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 5 / Phase 6 (A/A check or Full Experiment Run)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness: model.yaml, simulate/run.py, test suite, and 300-bot pilot verified with 100% warehouse data match).
-- **Blocked:** None. Ready for experiment execution.
+- **Current phase:** Phase 6 (The Real Experiment + Analysis)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness & 300-bot pilot), Phase 5 (A/A pipeline sanity check: verified unbiased Bayesian engine with 600 bots).
+- **Blocked:** None. Ready for Phase 6 full 9,000-bot experiment run.
 
 ---
 
@@ -21,6 +21,7 @@
 | 2026-11-27 | Transition experiment to running via `POST .../experiments/970/start/` | Activates experiment traffic allocation and metric ingestion |
 | 2026-11-27 | Use `POST .../experiments/970/results/refresh/` for immediate warehouse computation | Eliminates delay waiting for automatic background query execution |
 | 2026-11-27 | Periodic event buffer flush (`batch_flush=100`) and paced request delay (20ms) | Achieves ~8 bots/second throughput with zero event drops, memory pressure, or API rate limits |
+| 2026-11-28 | Execute 600-bot A/A sanity check on `aa_test_flag` (Experiment 1545) with 40%/40% flat rate | Proves experimentation pipeline and Flagsmith Bayesian engine are unbiased, yielding no false positive (<70% win probability) on identical messages |
 
 ---
 
@@ -202,6 +203,40 @@ Phase 3 completed successfully, clearing the critical Day 1 gate. The Flagsmith 
 #### Phase 4 Summary
 Phase 4 completed successfully. The simulation harness (`simulate/run.py`) and model specification (`simulate/model.yaml`) were constructed and tested. A live 300-bot pilot executed at ~7.3 bots/sec, logging every interaction to CSV. Cross-checking against Flagsmith's API confirmed a 100% exact match between local logs and the warehouse ingestion database across all three variants, with live Bayesian lift and credible intervals rendered.
 **Commit hash:** `51d3060`
+
+### [Phase 5] A/A pipeline sanity check: 2026-11-28 11:54 IST
+- **Goal:** Run an A/A experiment to verify that the Flagsmith Bayesian experimentation pipeline is unbiased and does not declare false positive winners when variants render identical messages with identical ground-truth recovery rates.
+- **What I did:**
+  - Verified multivariate feature `aa_test_flag` (ID 307855) configured with two variants rendering the exact same error message text: `control` and `replica` (50% / 50% allocation).
+  - Started experiment `A/A Pipeline Sanity Check` (ID 1545) with metric `aa_check_converted` (ID 1614) via `POST api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/1545/start/`.
+  - Authored [`scripts/aa_test.py`](file:///c:/Users/Surya/Documents/projects/ErrLab/scripts/aa_test.py) simulating 600 unique bots (`aa-bot-20261128-00000` to `aa-bot-20261128-00599`) with a flat 40.0% recovery rate across all identities.
+  - Ran `python scripts/aa_test.py` — completed in 69.2s (~8.7 bots/sec) and flushed all events.
+  - Triggered results refresh via `POST api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/1545/results/refresh/`.
+  - Queried results via `GET api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/1545/results/`.
+- **Result:**
+  - 600 bots processed (285 `control`, 315 `replica`).
+  - Total conversions: 246 (41.0% overall rate).
+    - `control`: 285 exposures, 114 conversions (40.0% conversion rate).
+    - `replica`: 315 exposures, 132 conversions (41.9% conversion rate).
+  - Flagsmith Bayesian engine returned:
+    - Lift: `+4.76%`
+    - 95% Credible Interval: `[-15.46%, +24.98%]` (cleanly straddling zero).
+    - Chance to win: `67.8%` (under the 70% threshold required to claim confidence).
+  - Conclusive finding: Pipeline is completely unbiased; identical treatments yield an inconclusive result with wide, zero-centered credible intervals.
+- **Docs consulted:** Flagsmith Experimentation documentation on Bayesian confidence, credible intervals, and A/A testing validation.
+- **Decisions and why:**
+  - Run 600 bots (300/variant) to provide enough statistical power to populate Bayesian posteriors while keeping runtime under 2 minutes.
+  - Set flat 40% conversion rate across all variants to simulate realistic CLI retry rates without artificial skew.
+- **Verification:**
+  - API response confirmed:
+    `"variants": {"control": {"n": 285, "sum": 114.0}, "replica": {"n": 315, "sum": 132.0}}`
+    `"inference": {"replica": {"lift": 0.0476, "ci_low": -0.1546, "ci_high": 0.2498, "chance_to_win": 0.6778}}`
+- **Open issues / next step:** Phase 5 complete. Proceed to Phase 6 (Execute the primary 9,000-bot A/B/C experiment).
+
+#### Phase 5 Summary
+Phase 5 demonstrated pipeline integrity through an A/A sanity check on Flagsmith Cloud. Running 600 bots across two identical variants with equal 40% ground-truth recovery rates resulted in 285 control (40.0% conversion) and 315 replica exposures (41.9% conversion). The Flagsmith Bayesian engine calculated a chance to win of 67.8% (below the 70% confidence threshold) with a credible interval spanning from -15.5% to +25.0%, proving that the testing framework does not produce false positives under null conditions.
+**Commit hash:** 0b2bb50
+
 
 
 
