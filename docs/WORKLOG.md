@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 7 (Ship the Winner)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness & 300-bot pilot), Phase 5 (A/A pipeline sanity check), Phase 6 (The real 9,000-bot experiment & Bayesian analysis: hypothesis confirmed with 100% win probability).
-- **Blocked:** None. Ready for Phase 7 (roll out winning variant via feature flag).
+- **Current phase:** Phase 8 (README, Cleanup, Security)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness & 300-bot pilot), Phase 5 (A/A pipeline sanity check), Phase 6 (The real 9,000-bot experiment & Bayesian analysis), Phase 7 (Ship the winner: rolled out `with_fix_and_link` to 100% of traffic with zero application code changes).
+- **Blocked:** None. Ready for Phase 8 (documentation, test verification, secret scans, and submission prep).
 
 ---
 
@@ -23,6 +23,7 @@
 | 2026-11-27 | Periodic event buffer flush (`batch_flush=100`) and paced request delay (20ms) | Achieves ~8 bots/second throughput with zero event drops, memory pressure, or API rate limits |
 | 2026-11-28 | Execute 600-bot A/A sanity check on `aa_test_flag` (Experiment 1545) with 40%/40% flat rate | Proves experimentation pipeline and Flagsmith Bayesian engine are unbiased, yielding no false positive (<70% win probability) on identical messages |
 | 2026-11-28 | Conclude 9,000-bot fixed-horizon simulation on Experiment 970 (seed 20261127) | Confirms primary hypothesis (+14.3pp lift vs control >= 10pp target) with 100% Bayesian confidence; selects `with_fix_and_link` as the winning variant |
+| 2026-11-28 | Conclude Experiment 970 and ship winner via `POST .../experiments/970/complete/` | Flagsmith sets `rollout_decision="variant"` and variant `37729` (`with_fix_and_link`) to 100% allocation; verified zero application code changes |
 
 ---
 
@@ -283,7 +284,7 @@ Phase 5 demonstrated pipeline integrity through an A/A sanity check on Flagsmith
 
 #### Phase 6 Summary
 Phase 6 executed the primary 9,000-bot seeded experiment (`simulate/run.py --n 9000 --seed 20261127`) in 14.7 minutes at 10.2 bots/sec. All events were captured in Flagsmith Cloud without drops or rate limits. The Flagsmith Bayesian engine reported 100% chance to win for both actionable variants over the terse control, with `with_fix_and_link` achieving a 49.36% recovery rate (+14.27 pp absolute lift, +40.66% relative lift, 95% CI: [32.1%, 49.2%]), decisively validating the core hypothesis.
-**Commit hash:** b7a4723
+**Commit hash:** `a40d3bb`
 
 ---
 
@@ -307,6 +308,42 @@ This section records the exact pre-registered parameters and final Flagsmith out
 
 - **Winning Variant:** `with_fix_and_link`
 - **Hypothesis Outcome:** **CONFIRMED** (Target: ≥ +10 pp lift; Achieved: +14.27 pp lift; Bayesian Confidence: 100.0%).
+
+### [Phase 7] Ship the Winning Variant: 2026-11-28 12:30 IST
+- **Goal:** Conclude Experiment 970 in Flagsmith, roll out the winning variant (`with_fix_and_link`) to 100% of traffic, verify that all CLI users immediately receive the winning error message style, and confirm zero application code changes via git diff.
+- **What I did:**
+  - Inspected OpenAPI / Swagger schema for Flagsmith experiments (`/api/v1/environments/{environment_api_key}/experiments/{experiment_id}/complete/`).
+  - Completed Experiment 970 and selected the winning rollout variant via Flagsmith API:
+    `POST .../experiments/970/complete/ -F rollout_decision="variant" -F rollout_variant=37729`
+  - Verified experiment status transitioned from `running` to `completed` with `ended_at: "2026-11-28T07:00:20.872370Z"`.
+  - Tested remote SDK variant evaluation across arbitrary fresh user identities (`user-alpha`, `user-beta`, `user-gamma`, `random-uuid-999`, `test-winner`).
+  - Executed CLI workflows across all three failure scenarios (`missing_api_key`, `invalid_config`, `port_in_use`) and verified full `with_fix_and_link` messages (Error + Fix + Docs URL).
+  - Reset CLI identity (`python -m errlab.cli identity --reset`) and verified that the newly generated identity receives `with_fix_and_link` out of the box.
+  - Checked repository code status via `git diff errlab/`.
+  - Executed test suite (`python -m pytest tests -q`).
+- **Result:**
+  - Flagsmith confirmed: `rollout_decision: "variant"`, `rollout_variant: 37729` (`with_fix_and_link`), `status: "completed"`.
+  - Variant allocations updated automatically: `with_fix_and_link: 100%`, `with_fix: 0%`, control: 0%.
+  - 100% of tested user identities resolved to `with_fix_and_link`.
+  - Live CLI outputs:
+    - `missing_api_key`: `Fix: Run 'errlab config set-key <KEY>'... Docs: https://errlab.dev/docs/authentication`
+    - `invalid_config`: `Fix: Check that config.yaml exists... Docs: https://errlab.dev/docs/config-schema`
+    - `port_in_use`: `Fix: Identify conflicting process on port 8080... Docs: https://errlab.dev/docs/port-conflicts`
+  - `git diff errlab/` returned zero lines changed. The winner was shipped purely through feature flag management without modifying or redeploying code.
+  - All 10 unit tests passed.
+- **Docs consulted:** Flagsmith OpenAPI Swagger specification for `api_v1_environments_experiments_complete_create` and `ExperimentRolloutDecision`.
+- **Decisions and why:**
+  - Used official `/complete/` endpoint to atomically record the experiment outcome, timestamp `ended_at`, and set feature rollout to 100% of the winning variant in Flagsmith Cloud.
+- **Verification:**
+  - Remote SDK returned `with_fix_and_link` for 5 out of 5 newly evaluated identities.
+  - CLI output verified in terminal.
+  - `git diff errlab/` is empty.
+- **Open issues / next step:** Proceed to Phase 8: Comprehensive README authoring, test validation, secret scans, clean clone check, and submission package finalization.
+
+#### Phase 7 Summary
+Phase 7 officially concluded Experiment 970 in Flagsmith. Using the `complete/` endpoint, the winning variant `with_fix_and_link` (multivariate option ID 37729) was designated as the winner and rolled out to 100% of traffic. Every CLI execution across all scenarios now renders the enriched error message with actionable fixes and documentation links. A check of `git diff errlab/` showed exactly zero code modifications, fulfilling the core goal of experimentation: ship proven improvements via feature flags without redeployment.
+**Commit hash:** 8e883fa
+
 
 
 
