@@ -1,9 +1,9 @@
 # ErrLab Worklog
 
 ## Current status
-- **Current phase:** Phase 6 (The Real Experiment + Analysis)
-- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness & 300-bot pilot), Phase 5 (A/A pipeline sanity check: verified unbiased Bayesian engine with 600 bots).
-- **Blocked:** None. Ready for Phase 6 full 9,000-bot experiment run.
+- **Current phase:** Phase 7 (Ship the Winner)
+- **Done:** Phase 0 (Foundations), Phase 1 (Flagsmith up and running), Phase 2 (Build the CLI), Phase 3 (Pipeline smoke test — Day 1 gate passed), Phase 4 (Simulation harness & 300-bot pilot), Phase 5 (A/A pipeline sanity check), Phase 6 (The real 9,000-bot experiment & Bayesian analysis: hypothesis confirmed with 100% win probability).
+- **Blocked:** None. Ready for Phase 7 (roll out winning variant via feature flag).
 
 ---
 
@@ -22,6 +22,7 @@
 | 2026-11-27 | Use `POST .../experiments/970/results/refresh/` for immediate warehouse computation | Eliminates delay waiting for automatic background query execution |
 | 2026-11-27 | Periodic event buffer flush (`batch_flush=100`) and paced request delay (20ms) | Achieves ~8 bots/second throughput with zero event drops, memory pressure, or API rate limits |
 | 2026-11-28 | Execute 600-bot A/A sanity check on `aa_test_flag` (Experiment 1545) with 40%/40% flat rate | Proves experimentation pipeline and Flagsmith Bayesian engine are unbiased, yielding no false positive (<70% win probability) on identical messages |
+| 2026-11-28 | Conclude 9,000-bot fixed-horizon simulation on Experiment 970 (seed 20261127) | Confirms primary hypothesis (+14.3pp lift vs control >= 10pp target) with 100% Bayesian confidence; selects `with_fix_and_link` as the winning variant |
 
 ---
 
@@ -235,7 +236,78 @@ Phase 4 completed successfully. The simulation harness (`simulate/run.py`) and m
 
 #### Phase 5 Summary
 Phase 5 demonstrated pipeline integrity through an A/A sanity check on Flagsmith Cloud. Running 600 bots across two identical variants with equal 40% ground-truth recovery rates resulted in 285 control (40.0% conversion) and 315 replica exposures (41.9% conversion). The Flagsmith Bayesian engine calculated a chance to win of 67.8% (below the 70% confidence threshold) with a credible interval spanning from -15.5% to +25.0%, proving that the testing framework does not produce false positives under null conditions.
-**Commit hash:** 0b2bb50
+**Commit hash:** `13d9058`
+
+### [Phase 6] The Real Experiment and Bayesian Analysis: 2026-11-28 12:17 IST
+- **Goal:** Execute the full fixed-horizon 9,000-bot simulation using the pre-registered model (`simulate/model.yaml`), verify 100% remote event ingestion in Flagsmith Cloud, cross-check local raw logs against warehouse aggregation, and evaluate the Bayesian win probability and lift.
+- **What I did:**
+  - Verified pre-registered parameters in [`simulate/model.yaml`](file:///c:/Users/Surya/Documents/projects/ErrLab/simulate/model.yaml): seed `20261127`, fixed-horizon sample size `9000`, stopping rule (no early stopping), and ground-truth recovery rates (`terse: 0.35`, `with_fix: 0.48`, `with_fix_and_link: 0.50`).
+  - Executed full simulation: `python simulate/run.py --n 9000 --seed 20261127`.
+  - Processed all 9,000 bots across scenarios (`invalid_config`, `missing_api_key`, `port_in_use`) with 20ms pacing and batch flushes every 100 iterations.
+  - Flushed all residual events to Flagsmith remote ingestion pipeline (HTTP 202).
+  - Saved raw CSV: `results/raw/simulation_20261128_120230.csv`.
+  - Triggered warehouse calculation refresh via `POST api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/970/results/refresh/`.
+  - Queried updated Bayesian results via `GET api/v1/environments/MQSxjKYRor9tQ2DccDBjUA/experiments/970/results/`.
+- **Result:**
+  - Simulation finished in 885.7s (~14.7 minutes, ~10.2 bots/sec).
+  - Local CSV counts for the 9,000 bots:
+    - `terse`: 2,934 exposures, 1,028 conversions (35.04% conversion rate; ground truth: 35.0%)
+    - `with_fix`: 3,048 exposures, 1,502 conversions (49.28% conversion rate; ground truth: 48.0%)
+    - `with_fix_and_link`: 3,018 exposures, 1,489 conversions (49.34% conversion rate; ground truth: 50.0%)
+    - Total: 9,000 exposures, 4,019 conversions (44.66%).
+  - Flagsmith Cloud warehouse numbers (cumulative across 9,021 unique identities, including prior smoke test identities):
+    - `control` (`terse`): 2,941 exposures, 1,032 conversions (35.09%)
+    - `with_fix`: 3,051 exposures, 1,503 conversions (49.26%)
+    - `with_fix_and_link`: 3,029 exposures, 1,495 conversions (49.36%)
+  - Flagsmith Bayesian Engine results:
+    - `with_fix`:
+      - Relative Lift: `+40.39%` (Absolute lift: `+14.17 pp` over control)
+      - 95% Credible Interval: `[+31.83%, +48.94%]`
+      - Chance to win: `100.0%` (`1.0`)
+    - `with_fix_and_link`:
+      - Relative Lift: `+40.66%` (Absolute lift: `+14.27 pp` over control)
+      - 95% Credible Interval: `[+32.08%, +49.23%]`
+      - Chance to win: `100.0%` (`1.0`)
+  - The primary hypothesis is decisively confirmed: actionable error messages produce a `+14.27 pp` lift in first-retry recovery, surpassing the pre-registered `>= 10 pp` threshold with 100% Bayesian certainty.
+- **Docs consulted:** Flagsmith Experimentation Bayesian inference engine documentation.
+- **Decisions and why:**
+  - Kept fixed-horizon stopping rule (no early stopping despite high early win probability) to prevent peeking bias and preserve statistical validity.
+  - Selected `with_fix_and_link` as the overall winner based on highest observed cumulative conversion rate (49.36% vs 49.26%) and highest lift (+40.66%).
+- **Verification:**
+  - Cumulative warehouse exposures match local logs with 100% fidelity:
+    - 2026-11-27 08:00 UTC bucket: 21 identities (smoke test)
+    - 2026-11-27 09:00 UTC bucket: 300 identities (pilot run)
+    - 2026-11-28 06:00 UTC bucket: 8,700 new identities (remaining bots from 9,000 run)
+    - Total unique identities evaluated: 9,021.
+- **Open issues / next step:** Proceed to Phase 7: Roll out the winning variant (`with_fix_and_link`) to 100% via the feature flag, verify zero code changes via `git diff`, and record the terminal before/after.
+
+#### Phase 6 Summary
+Phase 6 executed the primary 9,000-bot seeded experiment (`simulate/run.py --n 9000 --seed 20261127`) in 14.7 minutes at 10.2 bots/sec. All events were captured in Flagsmith Cloud without drops or rate limits. The Flagsmith Bayesian engine reported 100% chance to win for both actionable variants over the terse control, with `with_fix_and_link` achieving a 49.36% recovery rate (+14.27 pp absolute lift, +40.66% relative lift, 95% CI: [32.1%, 49.2%]), decisively validating the core hypothesis.
+**Commit hash:** b7a4723
+
+---
+
+## Results
+This section records the exact pre-registered parameters and final Flagsmith outcomes for quoting in the project README, submission, and demo video:
+
+- **Experiment Name:** `CLI Error Message Style Experiment` (ID 970)
+- **Target Feature:** `error_message_style` (ID 306536)
+- **Primary Metric:** `retry_succeeded` (ID 1025, occurrence-based, direction: up)
+- **Stopping Rule:** Fixed-horizon evaluation (9,000 bots, no early stopping)
+- **Seed:** `20261127`
+- **Total Unique Identities Evaluated:** 9,021
+- **Traffic Split:** 33.34% `terse` (control) / 33.33% `with_fix` / 33.33% `with_fix_and_link`
+
+### Outcome Summary Table
+| Variant | Ground-Truth Rate | Warehouse Exposures (n) | Warehouse Conversions (sum) | Observed Conversion Rate | Absolute Lift vs Control | Relative Lift (Flagsmith) | 95% Credible Interval | Win Probability |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **`terse` (Control)** | 35.0% | 2,941 | 1,032 | 35.09% | — | — | — | — |
+| **`with_fix`** | 48.0% | 3,051 | 1,503 | 49.26% | +14.17 pp | +40.39% | [+31.83%, +48.94%] | **100.0%** |
+| **`with_fix_and_link` (Winner)** | 50.0% | 3,029 | 1,495 | 49.36% | **+14.27 pp** | **+40.66%** | **[+32.08%, +49.23%]** | **100.0%** |
+
+- **Winning Variant:** `with_fix_and_link`
+- **Hypothesis Outcome:** **CONFIRMED** (Target: ≥ +10 pp lift; Achieved: +14.27 pp lift; Bayesian Confidence: 100.0%).
+
 
 
 
